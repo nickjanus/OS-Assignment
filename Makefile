@@ -10,4 +10,4 @@ all:
 
 	dd if=kernel of=floppya.img bs=512 conv=notrunc seek=3
 clean:
-	rm bootload kernel floppya.img *.c
+	rm bootload kernel floppya.img *.o
