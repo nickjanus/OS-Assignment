@@ -2,6 +2,7 @@ bochsout.txt
 kernel
 bootload
 *.img
+*.swp
 
 # Object files
 *.o
