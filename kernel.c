@@ -3,13 +3,33 @@ void readSector(char *buffer, int sector);
 void printChar(char c);
 void printString(char* str);
 void readString(char buffer[]); 
+void handleInterrupt21(int ax, int bx, int cx, int dx);
 
 void main()
 {
-	char buffer[512]; 
-	readSector(buffer, 30); 
-	printString(buffer); 
+	char line[80]; 
+	makeInterrupt21(); 
+	interrupt(0x21,1,line,0,0); 
+	interrupt(0x21,0,line,0,0); 
+
 	while (1);
+}
+
+void handleInterrupt21(int ax, int bx, int cx, int dx)
+{
+	switch(ax) {
+		case 0 :
+			printString(bx);
+			break;
+		case 1 :
+			readString(bx);
+			break;
+		case 2 :
+			readSector(bx,cx);
+			break;
+		default :
+			printString("Invalid value in reg AX");
+	}
 }
 
 void readSector(char *buffer, int sector)
@@ -53,7 +73,7 @@ void readString(char buffer[])
 	{
 		letter = interrupt(0x16, 0, 0, 0, 0); 
 		if ((letter == 0x8) && (i > 0)) {
-			i--;	
+			i -= 2;	
 		} else if (letter == 0xd) {
 			buffer[i] = 0xa;
 			buffer[i+1] = 0x0;
