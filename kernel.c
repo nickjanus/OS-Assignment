@@ -1,14 +1,33 @@
+int mod(int a, int b);
+void readSector(char *buffer, int sector);
 void printChar(char c);
 void printString(char* str);
 void readString(char buffer[]); 
 
 void main()
 {
-	char line[80]; 
-	printString("Enter a line: "); 
-	readString(line); 
-	printString(line);
+	char buffer[512]; 
+	readSector(buffer, 30); 
+	printString(buffer); 
 	while (1);
+}
+
+void readSector(char *buffer, int sector)
+{
+	int relativeSector = mod(sector, 18) + 1;
+	int track = sector / 36;
+	int head = mod((sector / 18), 2);
+	int floppyDevice = 0;
+	interrupt(0x13, 513, buffer, (track*256 + relativeSector), (head*256 + floppyDevice));
+}
+
+int mod(int a, int b)
+{
+	while(a > b)
+	{
+		a -= b;
+	}
+	return a;
 }
 
 void printChar(char c)
@@ -39,7 +58,6 @@ void readString(char buffer[])
 			buffer[i] = 0xa;
 			buffer[i+1] = 0x0;
 			printChar(0xa);
-			printChar(letter);
 			return; 
 		} else {
 			buffer[i] = letter;
