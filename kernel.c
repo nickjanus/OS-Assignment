@@ -3,6 +3,7 @@
 #define SECTOR_SIZE 512
 #define ENTRY_SIZE 32
 #define NAME_SIZE 6
+#define MAX_FILE_SIZE 13312 
 
 int interrupt(int number, int ax, int bx, int cx, int dx);
 int mod(int a, int b);
@@ -14,16 +15,21 @@ void readString(char buffer[]);
 void handleInterrupt21(int ax, int bx, int cx, int dx);
 void directory();
 void readFile (char* filename, char outbuf[]);
+void writeFile (char* filename, char inbuf[]);
 void deleteFile(char* filename);
 int getDirIndex(char* filename);
 void loadDirectory();
 void makeInterrupt21();
+int getEmptyDirIndex(char* directory);
+int getEmptySector(char* map);
 void main()
 {
   char buffer[13312]; /*this is the maximum size of a file*/ 
   makeInterrupt21(); 
+  interrupt(0x21, 3, 0,0,0); /*directory*/
   interrupt(0x21, 6, (int)"messag", (int)buffer, 0); /*read the file into buffer*/ 
-  interrupt(0x21, 0, (int)buffer, 0, 0); 
+  interrupt(0x21, 8, (int)"c_mess", (int)buffer, 0); /*write the file*/ 
+  interrupt(0x21, 3, 0,0,0); 
 
   while (1);
 }
@@ -48,6 +54,12 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
       break;
     case 6 : 
       readFile((char *)bx, (char *)cx);
+      break;
+    case 7 : 
+      writeSector((char *)bx,cx);
+      break;
+    case 8 : 
+      writeFile((char *)bx, (char *)cx);
       break;
     default :
       printString("Invalid value in reg AX");
@@ -85,6 +97,71 @@ void directory() {
       printChar(0xd); //start at beginning of line
     }
   }
+}
+
+void writeFile (char* filename, char inbuf[]) {
+  int x, sector, dirIndex;
+  char directory[SECTOR_SIZE];
+  char map[SECTOR_SIZE];
+
+  loadDirectory(directory);
+  loadMap(map);
+  dirIndex = getEmptyDirIndex(directory);
+  if (dirIndex == -1) {printString("ERROR: Directory is full"); return;}
+
+  //write name into directory
+  for (x = 0; x < NAME_SIZE; x++) {
+    directory[dirIndex + x] = *(filename + x);
+  }
+
+  dirIndex += NAME_SIZE;
+  //write file to sectors and record in map/directory
+  //size of the file is unknown, so write up to max
+  //break if a sector starts as null...
+  for (x = 0; x < MAX_FILE_SIZE; x += SECTOR_SIZE) {
+    sector = getEmptySector(map);
+    if (sector == -1) {printString("ERROR: Out of disk space"); return;}
+    
+    directory[dirIndex] = sector;
+    dirIndex++;
+    map[sector] = 0xFF;
+
+    if (*(inbuf + x) != 0) { 
+      writeSector(inbuf + x, sector);
+    } else {
+      break;
+    }
+  }
+
+  saveDirectory(directory);
+  saveMap(map);
+}
+
+int getEmptySector(char* map) {
+  int x, sector;
+  sector = -1;
+
+  for (x = 0; x < SECTOR_SIZE; x++) {
+    if (*(map + x) == 0) {
+      sector = x;
+      break;
+    }
+  }
+  return sector;
+}
+
+//returns index of directory entry
+int getEmptyDirIndex(char* directory) {
+  int x, dirIndex;
+  dirIndex = -1;
+  
+  for (x = 0; x < SECTOR_SIZE; x += ENTRY_SIZE) {
+    if(*(directory + x) == 0) {
+      dirIndex = x;
+      break;
+    }
+  }
+  return dirIndex;
 }
 
 void readFile (char* filename, char outbuf[]) {
