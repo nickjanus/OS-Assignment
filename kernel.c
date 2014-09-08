@@ -109,44 +109,33 @@ int getDirIndex(char* filename) {
       return x;
     } 
   }
+
+  return -1;
 }
 
 void deleteFile(char* filename) {
-  int x, y, matches;
-  char fileChar, entryChar;
+  int y, index;
+  char entryChar;
   char map[SECTOR_SIZE];
   char directory[SECTOR_SIZE];
   static char zeroSector[SECTOR_SIZE];
   loadDirectory(directory);
   loadMap(map);
+  index = getDirIndex(filename);
 
-  for (x = 0; x < SECTOR_SIZE; x += ENTRY_SIZE) {
-    matches = 1;
-
-    for (y = 0; y < NAME_SIZE; y++) {
-      fileChar = *(filename + y);
-      entryChar = directory[x + y];
-
-      if (fileChar != entryChar) {
-        matches = 0;
-        break;
+  if (index != -1) {
+    for (y = 0; y < ENTRY_SIZE; y++) {
+      entryChar = directory[index + y];
+      if ((y >= NAME_SIZE) && (entryChar != 0)) {
+        map[(int)entryChar] = 0;
+        writeSector(zeroSector, (int)entryChar);
       }
+          
+      directory[index+y] = 0;
     }
-
-    if (matches) {
-      for (y = 0; y < ENTRY_SIZE; y++) {
-        entryChar = directory[x + y];
-        if ((y >= NAME_SIZE) && (entryChar != 0)) {
-          map[(int)entryChar] = 0;
-          writeSector(zeroSector, (int)entryChar);
-        }
-            
-        directory[x+y] = 0;
-      }
-      saveMap(map);
-      saveDirectory(directory);
-      return;
-    }
+    saveMap(map);
+    saveDirectory(directory);
+    return;
   }
 }
 

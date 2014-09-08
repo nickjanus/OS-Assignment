@@ -1,6 +1,7 @@
 bochsout.txt
 kernel
 bootload
+loadFile
 *.img
 *.swp
 
