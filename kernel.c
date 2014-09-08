@@ -6,6 +6,7 @@
 #define MAX_FILE_SIZE 13312 
 
 int interrupt(int number, int ax, int bx, int cx, int dx);
+void putInMemory(int segment, int offset, char c);
 int mod(int a, int b);
 void readSector(char *buffer, int sector);
 void writeSector(char *buffer, int sector);
@@ -22,15 +23,14 @@ void loadDirectory();
 void makeInterrupt21();
 int getEmptyDirIndex(char* directory);
 int getEmptySector(char* map);
+void executeProgram(char* name, int segment);
+void launchProgram(int segment);
+void terminate();
+
 void main()
 {
-  char buffer[13312]; /*this is the maximum size of a file*/ 
   makeInterrupt21(); 
-  interrupt(0x21, 3, 0,0,0); /*directory*/
-  interrupt(0x21, 6, (int)"messag", (int)buffer, 0); /*read the file into buffer*/ 
-  interrupt(0x21, 8, (int)"c_mess", (int)buffer, 0); /*write the file*/ 
-  interrupt(0x21, 3, 0,0,0); 
-
+  interrupt(0x21, 9, (int)"tstprg", 0x2000, 0);
   while (1);
 }
 
@@ -52,6 +52,9 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
     case 4 : 
       deleteFile((char *)bx);
       break;
+    case 5 : 
+      terminate();
+      break;
     case 6 : 
       readFile((char *)bx, (char *)cx);
       break;
@@ -61,9 +64,38 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
     case 8 : 
       writeFile((char *)bx, (char *)cx);
       break;
+    case 9 : 
+      executeProgram((char *)bx, cx);
+      break;
     default :
       printString("Invalid value in reg AX");
   }
+}
+
+void terminate() {
+  printString("Watch me terminate!");
+  while (1);
+}
+
+void executeProgram(char* name, int segment) {
+  int x, y;
+  char program[MAX_FILE_SIZE];
+
+  if ((segment <= 0x1000) || (segment > 0xA000) || (mod(segment, 0x1000) != 0) ) {
+    printString("Error: Invalid Segment!");
+    return;
+  }
+
+  readFile(name, program);
+  for (x = 0; x < MAX_FILE_SIZE; x += SECTOR_SIZE) {
+    if (*(program + x) != 0) {
+      for(y = 0; y < SECTOR_SIZE; y++) {
+        putInMemory(segment, x + y, *(program + x + y));
+      }
+    }
+  }
+
+  launchProgram(segment);
 }
 
 void loadDirectory(char* buffer) {
@@ -254,7 +286,7 @@ void readSector(char *buffer, int sector)
 
 int mod(int a, int b)
 {
-  while(a > b)
+  while(a >= b)
   {
     a -= b;
   }
