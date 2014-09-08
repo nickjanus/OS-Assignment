@@ -20,10 +20,11 @@ void loadDirectory();
 void makeInterrupt21();
 void main()
 {
+  char buffer[13312]; /*this is the maximum size of a file*/ 
   makeInterrupt21(); 
-  interrupt(0x21, 3, 0,0,0); 
-  interrupt(0x21, 4, (int)"messag", 0, 0); 
-  interrupt(0x21, 3, 0,0,0);
+  interrupt(0x21, 6, (int)"messag", (int)buffer, 0); /*read the file into buffer*/ 
+  interrupt(0x21, 0, (int)buffer, 0, 0); 
+
   while (1);
 }
 
@@ -44,6 +45,9 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
       break;
     case 4 : 
       deleteFile((char *)bx);
+      break;
+    case 6 : 
+      readFile((char *)bx, (char *)cx);
       break;
     default :
       printString("Invalid value in reg AX");
@@ -84,8 +88,22 @@ void directory() {
 }
 
 void readFile (char* filename, char outbuf[]) {
-  
+  int x, index;
+  char entryChar;
+  char directory[SECTOR_SIZE];
+
+  loadDirectory(directory);
+  index = getDirIndex(filename);
+  if (index == -1) {printString("ERROR: No such file in Directory"); return;}
+
+  for(x = NAME_SIZE; x < ENTRY_SIZE; x++) {
+    entryChar = directory[index + x];
+    if (entryChar != 0) {
+      readSector((outbuf + (x - NAME_SIZE) * SECTOR_SIZE), (int)entryChar);
+    }
+  }
 }
+
 int getDirIndex(char* filename) {
   int x, y, matches;
   char fileChar, entryChar;
@@ -124,9 +142,9 @@ void deleteFile(char* filename) {
   index = getDirIndex(filename);
 
   if (index != -1) {
-    for (y = 0; y < ENTRY_SIZE; y++) {
+    for (y = NAME_SIZE; y < ENTRY_SIZE; y++) {
       entryChar = directory[index + y];
-      if ((y >= NAME_SIZE) && (entryChar != 0)) {
+      if ((entryChar != 0)) {
         map[(int)entryChar] = 0;
         writeSector(zeroSector, (int)entryChar);
       }
