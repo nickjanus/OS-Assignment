@@ -1,5 +1,6 @@
 bochsout.txt
 kernel
+shell
 bootload
 loadFile
 *.img

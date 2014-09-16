@@ -30,7 +30,7 @@ void terminate();
 void main()
 {
   makeInterrupt21(); 
-  interrupt(0x21, 9, (int)"tstprg", 0x2000, 0);
+  interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
   while (1);
 }
 
@@ -73,8 +73,7 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
 }
 
 void terminate() {
-  printString("Watch me terminate!");
-  while (1);
+  interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
 }
 
 void executeProgram(char* name, int segment) {
