@@ -13,6 +13,7 @@ void writeSector(char *buffer, int sector);
 void printChar(char c);
 void printString(char* str);
 void readString(char buffer[]); 
+void printNewLine();
 void handleInterrupt21(int ax, int bx, int cx, int dx);
 void directory();
 void readFile (char* filename, char outbuf[]);
@@ -31,7 +32,6 @@ void main()
 {
   makeInterrupt21(); 
   interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
-  while (1);
 }
 
 void handleInterrupt21(int ax, int bx, int cx, int dx)
@@ -73,7 +73,7 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
 }
 
 void terminate() {
-  interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
+  launchProgram(0x2000);
 }
 
 void executeProgram(char* name, int segment) {
@@ -123,15 +123,17 @@ void directory() {
       for (y = 0; y < NAME_SIZE; y++) {
         printChar(directory[x + y]);
       }
-
-      printChar(0xa); //next entry on a new line
-      printChar(0xd); //start at beginning of line
+      printNewLine();
     }
   }
 }
+void printNewLine() {
+      printChar(0xa); //next entry on a new line
+      printChar(0xd); //start at beginning of line
+}
 
 void writeFile (char* filename, char inbuf[]) {
-  int x, sector, dirIndex;
+  int x, sector, dirIndex, eolEncountered = 0;
   char directory[SECTOR_SIZE];
   char map[SECTOR_SIZE];
 
@@ -142,7 +144,12 @@ void writeFile (char* filename, char inbuf[]) {
 
   //write name into directory
   for (x = 0; x < NAME_SIZE; x++) {
-    directory[dirIndex + x] = *(filename + x);
+    if ((eolEncountered) || (*(filename+x) == 0xA)) {
+      eolEncountered = 1;
+      directory[dirIndex + x] = 0;
+    } else {
+      directory[dirIndex + x] = *(filename + x);
+    }
   }
 
   dirIndex += NAME_SIZE;
@@ -225,7 +232,9 @@ int getDirIndex(char* filename) {
       fileChar = *(filename + y);
       entryChar = directory[x + y];
 
-      if (fileChar != entryChar) {
+      if ((fileChar == 0xA) && (entryChar == 0)) {
+        break;
+      } else if (fileChar != entryChar) {
         matches = 0;
         break;
       }
@@ -248,8 +257,13 @@ void deleteFile(char* filename) {
   loadDirectory(directory);
   loadMap(map);
   index = getDirIndex(filename);
+  if (index == -1) {printString("ERROR: No such file in Directory"); return;}
 
   if (index != -1) {
+    for (y = 0; y < NAME_SIZE; y++) {
+      directory[index+y] = 0;
+    }
+
     for (y = NAME_SIZE; y < ENTRY_SIZE; y++) {
       entryChar = directory[index + y];
       if ((entryChar != 0)) {
@@ -304,6 +318,7 @@ void printString(char* str)
     printChar(*str);
     str++;
   }
+  printNewLine();
 }
 
 void readString(char buffer[])

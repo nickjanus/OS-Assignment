@@ -12,11 +12,17 @@ void createFile(char* name);
 void readFile(char* name, char* buffer);
 void writeFile(char* name, char* buffer);
 void execFile(char* name);
-void close();
+void shellExec();
 int parseCommand(char* buffer);
 int compareCommand(char* expectedCmd, char* str);
 
 void main() {
+  while (1) {
+    shellExec();
+  }
+}
+
+void shellExec() {
   int x, offset;
   char command[MAX_COMMAND_LENGTH];
   char inputBuffer[SCREEN_WIDTH];
@@ -24,43 +30,34 @@ void main() {
   char argument[SCREEN_WIDTH - MAX_COMMAND_LENGTH];
   int cmdEndIndex = 0;
 
-  while (1) {
-    print("sh> ");
-    readLine(inputBuffer);
-    cmdEndIndex = parseCommand(inputBuffer);
-print("2");
-    for (x = 0; x <= cmdEndIndex; x++) {
-      command[x] =  inputBuffer[x];
-      if (x == cmdEndIndex) {
-        command[x + 1] = 0; 
-      }
+  print("sh> ");
+  readLine(inputBuffer);
+  cmdEndIndex = parseCommand(inputBuffer);
+  for (x = 0; x <= cmdEndIndex; x++) {
+    command[x] =  inputBuffer[x];
+    if (x == cmdEndIndex) {
+      command[x + 1] = 0; 
     }
+  }
 
-print("3");
-    offset = cmdEndIndex + 2;
-    for (x = offset; x <= SCREEN_WIDTH; x++) {
-      argument[x - offset] = inputBuffer[x];
-      if (inputBuffer[x] == 0) {break;}
-    }
+  offset = cmdEndIndex + 2;
+  for (x = offset; x <= SCREEN_WIDTH; x++) {
+    argument[x - offset] = inputBuffer[x];
+    if (inputBuffer[x] == 0xA) {break;} //break at line feed
+  }
 
-print("4");
-print(command);
-    if (compareCommand("dir",command)) {
-print("5");
-      directory();
-    } else if (compareCommand("type",command)) {
-      printFile(argument);
-    } else if (compareCommand("del",command)) {
-      deleteFile(argument);
-    } else if (compareCommand("create",command)) {
-      createFile(argument);
-    } else if (compareCommand("execute",command)) {
-      execFile(argument);
-    } else {
-      print("Invalid command!");
-    }
-
-print("end");
+  if (compareCommand("dir",command)) {
+    directory();
+  } else if (compareCommand("type",command)) {
+    printFile(argument);
+  } else if (compareCommand("del",command)) {
+    deleteFile(argument);
+  } else if (compareCommand("create",command)) {
+    createFile(argument);
+  } else if (compareCommand("execute",command)) {
+    execFile(argument);
+  } else {
+    print("Invalid command!");
   }
 }
 
@@ -70,7 +67,7 @@ int parseCommand(char* buffer) {
   int endIndex = -1;
   char bufferChar = *buffer;
 
-  while ((bufferChar != ' ') && (bufferChar != 0)) { 
+  while ((bufferChar != ' ') && (bufferChar != 0) && (bufferChar != 0xA)) { 
     endIndex = x;
     x++;
     bufferChar = *(buffer + x);
@@ -84,7 +81,6 @@ int compareCommand(char* expectedCmd, char* str) {
   int result = 1;
   char expectedChar, strChar;
   
-print("a");
   do {
     expectedChar = *(expectedCmd + x);
     strChar = *(str + x);
@@ -107,7 +103,6 @@ void readLine(char* buffer) {
 }
 
 void directory() {
-print("directory();");
   interrupt(0x21,3,0,0,0);
 }
 
@@ -123,35 +118,29 @@ void deleteFile(char* name) {
 
 void createFile(char* name) {
   int x;
-  int empty = 0;
   int index = 0;
   char inputBuffer[MAX_FILE_SIZE];
   char lineBuffer[SCREEN_WIDTH];
 
-  while (!empty) {
+  while (1) {
     readLine(lineBuffer);
 
-    empty = 1;
-    for(x = 0; x < SCREEN_WIDTH; x++) {
-      if (lineBuffer[x] != 0) {
-        empty = 0;
-        break;
-      }
+    if (lineBuffer[0] == 0xA) {
+      break;
     }
 
-    if (!empty) {
-      for(x = 0; x < SCREEN_WIDTH; x++) {
-        inputBuffer[index] = lineBuffer[x];
-        lineBuffer[x] = 0;
-        index++;
-      }
+    for(x = 0; x < SCREEN_WIDTH; x++) {
+      inputBuffer[index] = lineBuffer[x];
+      lineBuffer[x] = 0;
+      index++;
+      if (lineBuffer[x] == 0xA) {break;}
     }
   }
   writeFile(name, inputBuffer);
 }
 
 void execFile(char* name) {
-  interrupt(0x21,9,(int)name,0x2000,0);
+  interrupt(0x21,9,(int)name,0x3000,0);
 }
 
 void readFile(char* name, char* buffer) {
