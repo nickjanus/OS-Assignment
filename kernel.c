@@ -21,17 +21,29 @@ void writeFile (char* filename, char inbuf[]);
 void deleteFile(char* filename);
 int getDirIndex(char* filename);
 void loadDirectory();
+void loadMap();
 void makeInterrupt21();
 int getEmptyDirIndex(char* directory);
 int getEmptySector(char* map);
+int getFileSize(char* name);
 void executeProgram(char* name, int segment);
 void launchProgram(int segment);
 void terminate();
+void makeTimerInterrupt();
+void returnFromTimer(int segment, int sp);
+void handleTimerInterrupt(int segment, int sp);
 
 void main()
 {
-  makeInterrupt21(); 
+  makeInterrupt21();  //create system call interrupt 
+  makeTimerInterrupt; //create timer interrupt for scheduling
   interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
+}
+
+void handleTimerInterrupt(int segment, int sp) {
+  printString("tic");
+
+  returnFromTimer(segment, sp);
 }
 
 void handleInterrupt21(int ax, int bx, int cx, int dx)
@@ -68,7 +80,7 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
       executeProgram((char *)bx, cx);
       break;
     default :
-      printString("Invalid value in reg AX");
+      printString("Invalid value in reg AX\n");
   }
 }
 
@@ -77,24 +89,41 @@ void terminate() {
 }
 
 void executeProgram(char* name, int segment) {
-  int x, y;
+  int x, y, programSize;
   char program[MAX_FILE_SIZE];
+  programSize = getFileSize(name);
 
   if ((segment <= 0x1000) || (segment > 0xA000) || (mod(segment, 0x1000) != 0) ) {
-    printString("Error: Invalid Segment!");
+    printString("Error: Invalid Segment!\n");
     return;
   }
 
   readFile(name, program);
-  for (x = 0; x < MAX_FILE_SIZE; x += SECTOR_SIZE) {
-    if (*(program + x) != 0) {
+  printString(program);
+  for (x = 0; x < programSize; x += SECTOR_SIZE) {
       for(y = 0; y < SECTOR_SIZE; y++) {
         putInMemory(segment, x + y, *(program + x + y));
       }
-    }
   }
 
   launchProgram(segment);
+}
+
+int getFileSize(char* name) {
+  int x, index, size = 0;
+  char* entry;
+  char directory[SECTOR_SIZE];
+
+  loadDirectory(directory);
+  index = getDirIndex(name);
+
+  for (x = 6; x < ENTRY_SIZE; x++) {
+    if (*(directory + index + x) != 0) {
+      size++;
+    }
+  }
+
+  return size * 0x100;
 }
 
 void loadDirectory(char* buffer) {
@@ -127,6 +156,7 @@ void directory() {
     }
   }
 }
+
 void printNewLine() {
       printChar(0xa); //next entry on a new line
       printChar(0xd); //start at beginning of line
@@ -140,7 +170,7 @@ void writeFile (char* filename, char inbuf[]) {
   loadDirectory(directory);
   loadMap(map);
   dirIndex = getEmptyDirIndex(directory);
-  if (dirIndex == -1) {printString("ERROR: Directory is full"); return;}
+  if (dirIndex == -1) {printString("ERROR: Directory is full\n"); return;}
 
   //write name into directory
   for (x = 0; x < NAME_SIZE; x++) {
@@ -158,7 +188,7 @@ void writeFile (char* filename, char inbuf[]) {
   //break if a sector starts as null...
   for (x = 0; x < MAX_FILE_SIZE; x += SECTOR_SIZE) {
     sector = getEmptySector(map);
-    if (sector == -1) {printString("ERROR: Out of disk space"); return;}
+    if (sector == -1) {printString("ERROR: Out of disk space\n"); return;}
     
     directory[dirIndex] = sector;
     dirIndex++;
@@ -209,7 +239,7 @@ void readFile (char* filename, char outbuf[]) {
 
   loadDirectory(directory);
   index = getDirIndex(filename);
-  if (index == -1) {printString("ERROR: No such file in Directory"); return;}
+  if (index == -1) {printString("ERROR: No such file in Directory\n"); return;}
 
   for(x = NAME_SIZE; x < ENTRY_SIZE; x++) {
     entryChar = directory[index + x];
@@ -257,7 +287,7 @@ void deleteFile(char* filename) {
   loadDirectory(directory);
   loadMap(map);
   index = getDirIndex(filename);
-  if (index == -1) {printString("ERROR: No such file in Directory"); return;}
+  if (index == -1) {printString("ERROR: No such file in Directory\n"); return;}
 
   if (index != -1) {
     for (y = 0; y < NAME_SIZE; y++) {
@@ -315,10 +345,13 @@ void printString(char* str)
 {
   while (*str != '\0')
   {
-    printChar(*str);
+    if (*str == '\n') {
+      printNewLine();
+    } else {
+      printChar(*str);
+    }
     str++;
   }
-  printNewLine();
 }
 
 void readString(char buffer[])
