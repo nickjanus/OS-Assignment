@@ -99,7 +99,6 @@ void executeProgram(char* name, int segment) {
   }
 
   readFile(name, program);
-  printString(program);
   for (x = 0; x < programSize; x += SECTOR_SIZE) {
       for(y = 0; y < SECTOR_SIZE; y++) {
         putInMemory(segment, x + y, *(program + x + y));
@@ -123,7 +122,7 @@ int getFileSize(char* name) {
     }
   }
 
-  return size * 0x100;
+  return size * 0x200;
 }
 
 void loadDirectory(char* buffer) {
