@@ -4,6 +4,15 @@
 #define ENTRY_SIZE 32
 #define NAME_SIZE 6
 #define MAX_FILE_SIZE 13312 
+#define MAX_PROCESSES 8
+#define SEGMENT_SIZE 0x1000
+#define USER_SPACE_OFFSET 0x2000
+#define INIT_STACK_POINTER 0xFF00
+#define INT_MAX_LENGTH 5 //ints are 2 bytes, largest around 32,000
+typedef struct procEntry {
+  int active;
+  int stackPointer;
+} procEntry;
 
 int interrupt(int number, int ax, int bx, int cx, int dx);
 void putInMemory(int segment, int offset, char c);
@@ -12,6 +21,7 @@ void readSector(char *buffer, int sector);
 void writeSector(char *buffer, int sector);
 void printChar(char c);
 void printString(char* str);
+void printInt(int n);
 void readString(char buffer[]); 
 void printNewLine();
 void handleInterrupt21(int ax, int bx, int cx, int dx);
@@ -26,28 +36,76 @@ void makeInterrupt21();
 int getEmptyDirIndex(char* directory);
 int getEmptySector(char* map);
 int getFileSize(char* name);
-void executeProgram(char* name, int segment);
-void launchProgram(int segment);
+void executeProgram(char* name);
+void initializeProgram();
 void terminate();
 void makeTimerInterrupt();
 void returnFromTimer(int segment, int sp);
 void handleTimerInterrupt(int segment, int sp);
+int getFreeSegment();
+void setKernelDataSegment();
+void restoreDataSegment();
+void main2();
 
-void main()
+void main() {main2();}
+procEntry ProcessTable[MAX_PROCESSES];
+int CurrentProcess;
+
+void main2()
 {
+  //setup proc table
+  int i;
+printString("Hello\n");
+printInt(8);
+printString("\n");
+printInt(167);
+printString("\n");
+printInt(430);
+printString("\n");
+  for(i = 0; i < MAX_PROCESSES; i++) {
+    ProcessTable[i].active = 0;
+    ProcessTable[i].stackPointer = INIT_STACK_POINTER;
+  }
+  CurrentProcess = MAX_PROCESSES;
+
+  //set up interrupts
   makeInterrupt21();  //create system call interrupt 
   makeTimerInterrupt(); //create timer interrupt for scheduling
-  interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
+
+  //launch shell
+printString("Launching Shell...\n");
+  executeProgram("shell\0");
 }
 
 void handleTimerInterrupt(int segment, int sp) {
-  interrupt(0x10, 0xe*256 + 'p', 0, 0, 0); printString("tic");
+  int x, nextProcess, nextSegment, nextStackPointer;
 
-  returnFromTimer(segment, sp);
+  setKernelDataSegment();
+  ProcessTable[CurrentProcess].stackPointer = sp;
+
+printString("Handling timer Interrupt...");
+  for (x = 1; x <= MAX_PROCESSES; x++) {
+    nextProcess = mod(CurrentProcess + x, MAX_PROCESSES);
+printString("x");
+    if(ProcessTable[nextProcess].active) {
+printString("\nGetting seg and sp\n");
+      nextSegment = nextProcess * SEGMENT_SIZE + USER_SPACE_OFFSET;
+      nextStackPointer = ProcessTable[nextProcess].stackPointer;
+if (nextProcess == CurrentProcess) {printString("Same old\n");} 
+else {printString("Not the same proc\n");}
+      CurrentProcess = nextProcess;
+      break;
+    }
+  }
+  
+  restoreDataSegment();
+  returnFromTimer(nextSegment, nextStackPointer);
 }
 
 void handleInterrupt21(int ax, int bx, int cx, int dx)
 {
+  setKernelDataSegment();
+
   switch(ax) {
     case 0 :
       printString((char *)bx);
@@ -77,26 +135,30 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
       writeFile((char *)bx, (char *)cx);
       break;
     case 9 : 
-      executeProgram((char *)bx, cx);
+      executeProgram((char *)bx);
       break;
     default :
       printString("Invalid value in reg AX\n");
   }
+
+  restoreDataSegment();
 }
 
 void terminate() {
-  launchProgram(0x2000);
+  ProcessTable[CurrentProcess].active = 0;
+  ProcessTable[CurrentProcess].stackPointer = INIT_STACK_POINTER;
+  restoreDataSegment(); //must be called explicitly here, because no return
+  while (1);
 }
 
-void executeProgram(char* name, int segment) {
-  int x, y, programSize;
+void executeProgram(char* name) {
+  int x, y, programSize, segment;
   char program[MAX_FILE_SIZE];
   programSize = getFileSize(name);
 
-  if ((segment <= 0x1000) || (segment > 0xA000) || (mod(segment, 0x1000) != 0) ) {
-    printString("Error: Invalid Segment!\n");
-    return;
-  }
+printString("Launching Program...\n");
+  segment = getFreeSegment();
+  if (segment == 0) {printString("Error: Max number of processes reached.\n"); return;}
 
   readFile(name, program);
   for (x = 0; x < programSize; x += SECTOR_SIZE) {
@@ -105,7 +167,21 @@ void executeProgram(char* name, int segment) {
       }
   }
 
-  launchProgram(segment);
+  initializeProgram(segment);
+}
+
+int getFreeSegment() {
+  int x, freeSegment = -2;
+
+  for (x = 0; x < MAX_PROCESSES; x++) {
+    if (ProcessTable[x].active == 0) {
+      freeSegment = x; 
+      ProcessTable[x].active = 1;
+      break;
+    }
+  }
+
+  return freeSegment * SEGMENT_SIZE + USER_SPACE_OFFSET;
 }
 
 int getFileSize(char* name) {
@@ -122,7 +198,7 @@ int getFileSize(char* name) {
     }
   }
 
-  return size * 0x200;
+  return size * SECTOR_SIZE;
 }
 
 void loadDirectory(char* buffer) {
@@ -338,6 +414,27 @@ int mod(int a, int b)
 void printChar(char c)
 {  
   interrupt(0x10, 0xe*256 + c, 0, 0, 0); 
+}
+
+void printInt(int n) {
+  int quotient, remainder, length, x;
+  int digits[INT_MAX_LENGTH];
+  //432 would be stored in digits as [0,0,4,3,2]
+
+  x = INT_MAX_LENGTH - 1;
+  length = 0;
+  do {
+    quotient = n/10;
+    remainder = mod(n,10);
+    digits[x] = remainder + 48;
+    length++;
+    n = quotient;
+    x--;
+  } while (quotient != 0);
+
+  for (x = length; x > 0 ; x--) {
+    printChar(digits[INT_MAX_LENGTH - x]);
+  }
 }
 
 void printString(char* str)

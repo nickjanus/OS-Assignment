@@ -15,8 +15,11 @@ void execFile(char* name);
 void shellExec();
 int parseCommand(char* buffer);
 int compareCommand(char* expectedCmd, char* str);
+void enableInterrupts();
 
 void main() {
+  enableInterrupts();
+
   while (1) {
     shellExec();
   }
@@ -140,7 +143,7 @@ void createFile(char* name) {
 }
 
 void execFile(char* name) {
-  interrupt(0x21,9,(int)name,0x3000,0);
+  interrupt(0x21,9,(int)name,0,0);
 }
 
 void readFile(char* name, char* buffer) {
