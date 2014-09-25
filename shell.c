@@ -21,6 +21,7 @@ void main() {
   enableInterrupts();
 
   while (1) {
+interrupt(0x10, 0xe*256 + 'X', 0, 0, 0); 
     shellExec();
   }
 }

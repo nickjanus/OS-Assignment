@@ -57,7 +57,6 @@ void main2()
 {
   //setup proc table
   int i;
-printString("Hello\n");
   for(i = 0; i < MAX_PROCESSES; i++) {
     ProcessTable[i].active = 0;
     ProcessTable[i].stackPointer = INIT_STACK_POINTER;
@@ -69,7 +68,6 @@ printString("Hello\n");
   makeTimerInterrupt(); //create timer interrupt for scheduling
 
   //launch shell
-printString("Launching Shell...\n");
   executeProgram("shell\0");
 }
 
@@ -78,8 +76,7 @@ void handleTimerInterrupt(int segment, int sp) {
 
   setKernelDataSegment();
 
-printString("Handling timer Interrupt...\n");
-printString("Current Segment: "); printInt(segment); printString("\n");
+//printString("\nHandling timer Interrupt...\n");
   //stow kernel sp if kernel is current proc
   if(CurrentProcess == -1) {
     KernelStackPointer = sp;
@@ -87,14 +84,12 @@ printString("Current Segment: "); printInt(segment); printString("\n");
     ProcessTable[CurrentProcess].stackPointer = sp;
   }
 
+//printString("Current proc: "); printInt(CurrentProcess);
   for (x = CurrentProcess + 1; x <= MAX_PROCESSES; x++) {
-printString("x");
     if(ProcessTable[x].active) {
-printString("\nGetting seg and sp\n");
       nextSegment = x * SEGMENT_SIZE + USER_SPACE_OFFSET;
       nextStackPointer = ProcessTable[x].stackPointer;
-printString("Current proc: "); printInt(CurrentProcess);
-printString("\nNext proc: "); printInt(x);
+//printString("\nNext proc: "); printInt(x);
       CurrentProcess = x;
       break;
     }
@@ -105,8 +100,11 @@ printString("\nNext proc: "); printInt(x);
     nextStackPointer = KernelStackPointer;
     nextSegment = KERNEL_SEGMENT;
     CurrentProcess = -1;
+//printString("\nNext proc: "); printInt(-1);
   }
   
+//printString("\nCurrent sp: "); printInt(sp);
+//printString("\nNext sp: "); printInt(nextStackPointer);
   restoreDataSegment();
   returnFromTimer(nextSegment, nextStackPointer);
 }
@@ -165,20 +163,16 @@ void executeProgram(char* name) {
   char program[MAX_FILE_SIZE];
   programSize = getFileSize(name);
 
-printString("Launching Program...\n");
   procEntry = getFreeProcEntry();
   segment = procEntry * SEGMENT_SIZE + USER_SPACE_OFFSET;
-printString("Segment for new proc: "); printInt(segment); printString("\n");
   if (segment == 0) {printString("Error: Max number of processes reached.\n"); return;}
 
   readFile(name, program);
   for (x = 0; x < programSize; x += SECTOR_SIZE) {
       for(y = 0; y < SECTOR_SIZE; y++) {
-printString("p");
         putInMemory(segment, x + y, *(program + x + y));
       }
   }
-printString("Initializing program...\n");
   initializeProgram(segment);
   ProcessTable[procEntry].active = 1;
 }
