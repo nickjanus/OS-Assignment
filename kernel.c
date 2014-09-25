@@ -36,12 +36,12 @@ void handleTimerInterrupt(int segment, int sp);
 void main()
 {
   makeInterrupt21();  //create system call interrupt 
-  makeTimerInterrupt; //create timer interrupt for scheduling
+  makeTimerInterrupt(); //create timer interrupt for scheduling
   interrupt(0x21, 9, (int)"shell\0", 0x2000, 0);
 }
 
 void handleTimerInterrupt(int segment, int sp) {
-  printString("tic");
+  interrupt(0x10, 0xe*256 + 'p', 0, 0, 0); printString("tic");
 
   returnFromTimer(segment, sp);
 }

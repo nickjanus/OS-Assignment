@@ -46,7 +46,6 @@ void shellExec() {
     if (inputBuffer[x] == 0xA) {break;} //break at line feed
   }
 
-  print("\n");
   if (compareCommand("dir",command)) {
     directory();
   } else if (compareCommand("type",command)) {
