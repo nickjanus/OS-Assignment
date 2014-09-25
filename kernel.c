@@ -6,6 +6,7 @@
 #define MAX_FILE_SIZE 13312 
 #define MAX_PROCESSES 8
 #define SEGMENT_SIZE 0x1000
+#define KERNEL_SEGMENT 0x1000
 #define USER_SPACE_OFFSET 0x2000
 #define INIT_STACK_POINTER 0xFF00
 #define INT_MAX_LENGTH 5 //ints are 2 bytes, largest around 32,000
@@ -42,7 +43,7 @@ void terminate();
 void makeTimerInterrupt();
 void returnFromTimer(int segment, int sp);
 void handleTimerInterrupt(int segment, int sp);
-int getFreeSegment();
+int getFreeProcEntry();
 void setKernelDataSegment();
 void restoreDataSegment();
 void main2();
@@ -50,23 +51,18 @@ void main2();
 void main() {main2();}
 procEntry ProcessTable[MAX_PROCESSES];
 int CurrentProcess;
+int KernelStackPointer;
 
 void main2()
 {
   //setup proc table
   int i;
 printString("Hello\n");
-printInt(8);
-printString("\n");
-printInt(167);
-printString("\n");
-printInt(430);
-printString("\n");
   for(i = 0; i < MAX_PROCESSES; i++) {
     ProcessTable[i].active = 0;
     ProcessTable[i].stackPointer = INIT_STACK_POINTER;
   }
-  CurrentProcess = MAX_PROCESSES;
+  CurrentProcess = -1; //start at beginning of proc table at first interrupt
 
   //set up interrupts
   makeInterrupt21();  //create system call interrupt 
@@ -78,24 +74,37 @@ printString("Launching Shell...\n");
 }
 
 void handleTimerInterrupt(int segment, int sp) {
-  int x, nextProcess, nextSegment, nextStackPointer;
+  int x, nextSegment = -1, nextStackPointer = -1;
 
   setKernelDataSegment();
-  ProcessTable[CurrentProcess].stackPointer = sp;
 
-printString("Handling timer Interrupt...");
-  for (x = 1; x <= MAX_PROCESSES; x++) {
-    nextProcess = mod(CurrentProcess + x, MAX_PROCESSES);
+printString("Handling timer Interrupt...\n");
+printString("Current Segment: "); printInt(segment); printString("\n");
+  //stow kernel sp if kernel is current proc
+  if(CurrentProcess == -1) {
+    KernelStackPointer = sp;
+  } else {
+    ProcessTable[CurrentProcess].stackPointer = sp;
+  }
+
+  for (x = CurrentProcess + 1; x <= MAX_PROCESSES; x++) {
 printString("x");
-    if(ProcessTable[nextProcess].active) {
+    if(ProcessTable[x].active) {
 printString("\nGetting seg and sp\n");
-      nextSegment = nextProcess * SEGMENT_SIZE + USER_SPACE_OFFSET;
-      nextStackPointer = ProcessTable[nextProcess].stackPointer;
-if (nextProcess == CurrentProcess) {printString("Same old\n");} 
-else {printString("Not the same proc\n");}
-      CurrentProcess = nextProcess;
+      nextSegment = x * SEGMENT_SIZE + USER_SPACE_OFFSET;
+      nextStackPointer = ProcessTable[x].stackPointer;
+printString("Current proc: "); printInt(CurrentProcess);
+printString("\nNext proc: "); printInt(x);
+      CurrentProcess = x;
       break;
     }
+  }
+
+  //kernel's turn to run?
+  if(nextSegment == -1) {
+    nextStackPointer = KernelStackPointer;
+    nextSegment = KERNEL_SEGMENT;
+    CurrentProcess = -1;
   }
   
   restoreDataSegment();
@@ -152,36 +161,39 @@ void terminate() {
 }
 
 void executeProgram(char* name) {
-  int x, y, programSize, segment;
+  int x, y, programSize, procEntry, segment;
   char program[MAX_FILE_SIZE];
   programSize = getFileSize(name);
 
 printString("Launching Program...\n");
-  segment = getFreeSegment();
+  procEntry = getFreeProcEntry();
+  segment = procEntry * SEGMENT_SIZE + USER_SPACE_OFFSET;
+printString("Segment for new proc: "); printInt(segment); printString("\n");
   if (segment == 0) {printString("Error: Max number of processes reached.\n"); return;}
 
   readFile(name, program);
   for (x = 0; x < programSize; x += SECTOR_SIZE) {
       for(y = 0; y < SECTOR_SIZE; y++) {
+printString("p");
         putInMemory(segment, x + y, *(program + x + y));
       }
   }
-
+printString("Initializing program...\n");
   initializeProgram(segment);
+  ProcessTable[procEntry].active = 1;
 }
 
-int getFreeSegment() {
-  int x, freeSegment = -2;
+int getFreeProcEntry() {
+  int x, freeProcEntry = -2;
 
   for (x = 0; x < MAX_PROCESSES; x++) {
     if (ProcessTable[x].active == 0) {
-      freeSegment = x; 
-      ProcessTable[x].active = 1;
+      freeProcEntry = x; 
       break;
     }
   }
 
-  return freeSegment * SEGMENT_SIZE + USER_SPACE_OFFSET;
+  return freeProcEntry;
 }
 
 int getFileSize(char* name) {
