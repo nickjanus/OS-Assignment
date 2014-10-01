@@ -46,6 +46,7 @@ void handleTimerInterrupt(int segment, int sp);
 int getFreeProcEntry();
 void setKernelDataSegment();
 void restoreDataSegment();
+void killProcess(int proc);
 void main2();
 
 void main() {main2();}
@@ -139,6 +140,9 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
     case 9 : 
       executeProgram((char *)bx);
       break;
+    case 10:
+      killProcess(bx);
+      break;
     default :
       setKernelDataSegment();
       printString("Invalid value in reg AX\n");
@@ -146,11 +150,15 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
   }
 }
 
-void terminate() {
+void killProcess(int proc) {
   setKernelDataSegment();
-  ProcessTable[CurrentProcess].active = 0;
-  ProcessTable[CurrentProcess].stackPointer = INIT_STACK_POINTER;
-  restoreDataSegment(); 
+  ProcessTable[proc].active = 0;
+  ProcessTable[proc].stackPointer = INIT_STACK_POINTER;
+  restoreDataSegment();
+}
+
+void terminate() {
+  killProcess(CurrentProcess);
   while (1);
 }
 

@@ -15,6 +15,10 @@ void execFile(char* name);
 void shellExec();
 int parseCommand(char* buffer);
 int compareCommand(char* expectedCmd, char* str);
+void kill(int proc);
+int argLength(char* arg);
+int stringToInt(char* arg);
+int power(int base, int exp);
 void enableInterrupts();
 
 void main() {
@@ -59,6 +63,8 @@ void shellExec() {
     createFile(argument);
   } else if (compareCommand("execute",command)) {
     execFile(argument);
+  } else if (compareCommand("kill",command)) {
+    kill(stringToInt(argument));
   } else {
     print("Invalid command!\n");
   }
@@ -95,6 +101,35 @@ int compareCommand(char* expectedCmd, char* str) {
     }
   } while (strChar != 0);
   return result;
+}
+
+//string must end with 0xA, see argLength
+int stringToInt(char* arg) {
+  int result = 0, i, length = argLength(arg);
+  for (i = length; i > 0; i--) {
+    result += power(*(arg + (length - i)) - 48, i);
+  }
+  return result;
+}
+
+int power(int base, int exp) {
+  int i, result = 1;
+  for (i = 0; i < exp; i++) {
+    result *= base;
+  }
+  return result;
+}
+
+int argLength(char* arg) {
+  int x = 0;
+  while (0xA != *(arg + x)) {
+    x++;
+  }
+  return x;
+}
+
+void kill(int proc) {
+  interrupt(0x21,10,proc,0,0);
 }
 
 void print(char* str) {
