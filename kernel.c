@@ -76,6 +76,24 @@ void handleTimerInterrupt(int segment, int sp) {
 
   setKernelDataSegment();
 
+if (segment == 0x1000) {
+  putInMemory(0xB000, 0x8162, 'K');
+  putInMemory(0xB000, 0x8163, 0x7);
+}
+
+else if (segment == 0x2000) {
+  putInMemory(0xB000, 0x8164, '0');
+  putInMemory(0xB000, 0x8165, 0x7);
+}
+else if (segment == 0x3000) {
+  putInMemory(0xB000, 0x8166, '1');
+  putInMemory(0xB000, 0x8167, 0x7);
+}
+else {
+  putInMemory(0xB000, 0x8160, 'X');
+  putInMemory(0xB000, 0x8161, 0x7);
+}
+
 //printString("\nHandling timer Interrupt...\n");
   //stow kernel sp if kernel is current proc
   if(CurrentProcess == -1) {
@@ -84,12 +102,12 @@ void handleTimerInterrupt(int segment, int sp) {
     ProcessTable[CurrentProcess].stackPointer = sp;
   }
 
-printString("Current proc: "); printInt(CurrentProcess);
+//printString("\nCurrent proc: "); printInt(CurrentProcess);
   for (x = CurrentProcess + 1; x <= MAX_PROCESSES; x++) {
     if(ProcessTable[x].active) {
       nextSegment = x * SEGMENT_SIZE + USER_SPACE_OFFSET;
       nextStackPointer = ProcessTable[x].stackPointer;
-printString("\nNext proc: "); printInt(x);
+//printString("\nNext proc: "); printInt(x);
       CurrentProcess = x;
       break;
     }
