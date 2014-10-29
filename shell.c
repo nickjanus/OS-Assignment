@@ -19,6 +19,7 @@ void kill(int proc);
 int argLength(char* arg);
 int stringToInt(char* arg);
 int power(int base, int exp);
+void printMessage();
 void enableInterrupts();
 
 void main() {
@@ -65,9 +66,18 @@ void shellExec() {
     execFile(argument);
   } else if (compareCommand("kill",command)) {
     kill(stringToInt(argument));
+  } else if (compareCommand("getmsg",command)){
+    printMessage();
   } else {
     print("Invalid command!\n");
   }
+}
+
+//checks ipc message and prints, blocking command
+void printMessage() {
+  char buffer[100];
+  interrupt(0x21,12,(int)buffer,0,0);
+  print(buffer);
 }
 
 //returns ending index of command

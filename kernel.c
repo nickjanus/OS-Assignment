@@ -10,10 +10,16 @@
 #define USER_SPACE_OFFSET 0x2000
 #define INIT_STACK_POINTER 0xFF00
 #define INT_MAX_LENGTH 5 //ints are 2 bytes, largest around 32,000
+#define MESSAGE_LENGTH 100
 typedef struct procEntry {
   int active;
   int stackPointer;
 } procEntry;
+
+typedef struct message {
+  char buffer[100];
+  int age; //minimum age for message is 1, 0 for no message
+} message;
 
 int interrupt(int number, int ax, int bx, int cx, int dx);
 void putInMemory(int segment, int offset, char c);
@@ -47,10 +53,15 @@ int getFreeProcEntry();
 void setKernelDataSegment();
 void restoreDataSegment();
 void killProcess(int proc);
+void sendMessage(char* buffer, int receiver);
+void getMessage(char* buffer);
 void main2();
 
 void main() {main2();}
+
+//globals
 procEntry ProcessTable[MAX_PROCESSES];
+message Messages[MAX_PROCESSES][MAX_PROCESSES];  //Messages[ToProcess][FromProcess]
 int CurrentProcess;
 
 void main2()
@@ -72,25 +83,86 @@ void main2()
   while(1);//make sure the stack pointer for main execution stays here
 }
 
+//race conditions below?
+void sendMessage(char* buffer, int receiver) {
+  int i = 0, bufferEmpty = 0, originalAge;
+  char message[MESSAGE_LENGTH];
+
+  //age other messages
+  setKernelDataSegment();
+  originalAge = Messages[receiver][CurrentProcess].age;
+  Messages[receiver][CurrentProcess].age = 0; //message not ready for reading
+  if (originalAge != 1) { //otherwise status quo
+    for(i=0; i < MAX_PROCESSES; i++) {
+      if ((i != CurrentProcess) && (Messages[receiver][i].age > 0)) {
+        Messages[receiver][i].age++; 
+      }
+    }
+  }
+  restoreDataSegment();
+
+  //copy buffer from other segment to stack
+  //TODO why is this not working???
+  for(i=0; i < MESSAGE_LENGTH; i++) {
+    message[i] = *(buffer + i);
+  }
+
+  //copy message to first null character and write null after that
+  for(i=0; i < MESSAGE_LENGTH; i++) {
+    setKernelDataSegment();
+    if ((message[i] == '\0') || bufferEmpty) {
+      bufferEmpty = 1;
+      *(Messages[receiver][CurrentProcess].buffer + i) = '\0';
+printString("B");
+    } else {
+printString("A");
+      *(Messages[receiver][CurrentProcess].buffer + i) = message[i];
+    }
+    restoreDataSegment();
+  }
+
+  printString("message: ");
+  printString(buffer);
+  printString("EOM\n");
+  printString("message: ");
+  printString(message);
+  printString("EOM\n");
+  setKernelDataSegment();
+  printString("Message: ");
+  printString(Messages[receiver][CurrentProcess].buffer);
+  printString("EOM\n");
+  Messages[receiver][CurrentProcess].age = 1; //message is ready
+  restoreDataSegment();
+}
+
+void getMessage(char* buffer) {
+  int fromProc, maxAge = 0, i = 0;
+  //get oldest message
+  while(maxAge == 0) {
+    for (i = 0; i < MAX_PROCESSES; i++) {
+      setKernelDataSegment();
+      if (Messages[CurrentProcess][i].age > maxAge) {
+        maxAge = Messages[CurrentProcess][i].age;
+        fromProc = i;
+      }
+      restoreDataSegment();
+    }
+  }
+  
+  //copy message
+  setKernelDataSegment();
+  for (i = 0; i < MESSAGE_LENGTH; i++) {
+    *(buffer + i) = *(Messages[CurrentProcess][fromProc].buffer + i);
+  }
+
+  //remove message
+  Messages[CurrentProcess][fromProc].age = 0;
+  restoreDataSegment();
+}
+
+//scheduler
 void handleTimerInterrupt(int segment, int sp) {
   int x, index;
-
-if (segment == 0x1000) {
-  putInMemory(0xB000, 0x8162, 'K');
-  putInMemory(0xB000, 0x8163, 0x7);
-}
-else if (segment == 0x2000) {
-  putInMemory(0xB000, 0x8164, '0');
-  putInMemory(0xB000, 0x8165, 0x7);
-}
-else if (segment == 0x3000) {
-  putInMemory(0xB000, 0x8166, '1');
-  putInMemory(0xB000, 0x8167, 0x7);
-}
-else {
-  putInMemory(0xB000, 0x8160, 'X');
-  putInMemory(0xB000, 0x8161, 0x7);
-}
 
   setKernelDataSegment();
   for (x = 1; x <= MAX_PROCESSES; x++) {
@@ -142,6 +214,12 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
       break;
     case 10:
       killProcess(bx);
+      break;
+    case 11:
+      sendMessage((char *)bx, cx);
+      break;
+    case 12:
+      getMessage((char *)bx);
       break;
     default :
       setKernelDataSegment();
