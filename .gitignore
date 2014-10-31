@@ -3,6 +3,8 @@ kernel
 shell
 bootload
 loadFile
+send
+receiv
 *.img
 *.swp
 

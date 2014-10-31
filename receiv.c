@@ -8,7 +8,7 @@ void main()
   enableInterrupts();
 
   //check messages
-  interrupt(0x21, 0, "\nChecking messages...\n", 0, 0);
-  interrupt(0x21, 12, buffer, 0, 0);
-  interrupt(0x21, 0, buffer, 0, 0);
+  //interrupt(0x21, 0, "\nChecking messages...\n", 0, 0);
+  interrupt(0x21, 12, (int)buffer, 0, 0);
+  interrupt(0x21, 0, (int)buffer, 0, 0);
 }

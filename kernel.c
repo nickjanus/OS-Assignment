@@ -7,10 +7,12 @@
 #define MAX_PROCESSES 8
 #define SEGMENT_SIZE 0x1000
 #define KERNEL_SEGMENT 0x1000
-#define USER_SPACE_OFFSET 0x2000
+#define MESSAGE_SEGMENT 0x2000
+#define USER_SPACE_OFFSET 0x3000
 #define INIT_STACK_POINTER 0xFF00
 #define INT_MAX_LENGTH 5 //ints are 2 bytes, largest around 32,000
 #define MESSAGE_LENGTH 100
+#define MSG_AGE_INDEX MESSAGE_LENGTH
 typedef struct procEntry {
   int active;
   int stackPointer;
@@ -23,6 +25,7 @@ typedef struct message {
 
 int interrupt(int number, int ax, int bx, int cx, int dx);
 void putInMemory(int segment, int offset, char c);
+char readFromMemory(int segment, int offset);
 int mod(int a, int b);
 void readSector(char *buffer, int sector);
 void writeSector(char *buffer, int sector);
@@ -55,6 +58,8 @@ void restoreDataSegment();
 void killProcess(int proc);
 void sendMessage(char* buffer, int receiver);
 void getMessage(char* buffer);
+int getMsgAddress(int receiver, int sender);
+int getMsgAge(int receiver, int sender);
 void main2();
 
 void main() {main2();}
@@ -83,81 +88,81 @@ void main2()
   while(1);//make sure the stack pointer for main execution stays here
 }
 
+int getMsgAddress(int receiver, int sender) {
+  int addr = 0;
+  addr = receiver * MAX_PROCESSES * (MESSAGE_LENGTH + 1); //+1 to track age
+  addr += sender * (MESSAGE_LENGTH + 1);
+  return addr;
+}
+
+int getMsgAge(int receiver, int sender) {
+  int addr = getMsgAddress(receiver, sender);
+  return (int) readFromMemory(MESSAGE_SEGMENT, addr + MSG_AGE_INDEX);
+}
+
+void setMsgAge(int receiver, int sender, int age) {
+  int addr = getMsgAddress(receiver, sender);
+  putInMemory(MESSAGE_SEGMENT, addr + MSG_AGE_INDEX, age);
+}
+
 //race conditions below?
 void sendMessage(char* buffer, int receiver) {
-  int i = 0, bufferEmpty = 0, originalAge;
-  char message[MESSAGE_LENGTH];
+  int i = 0, bufferEmpty = 0, originalAge, currentProc, addr;
+
+  setKernelDataSegment();
+  currentProc = CurrentProcess;
+  restoreDataSegment();
+  addr = getMsgAddress(receiver, currentProc);
 
   //age other messages
-  setKernelDataSegment();
-  originalAge = Messages[receiver][CurrentProcess].age;
-  Messages[receiver][CurrentProcess].age = 0; //message not ready for reading
+  originalAge = getMsgAge(receiver, currentProc);
+  setMsgAge(receiver, currentProc, 0); //message not ready for reading
+
   if (originalAge != 1) { //otherwise status quo
     for(i=0; i < MAX_PROCESSES; i++) {
-      if ((i != CurrentProcess) && (Messages[receiver][i].age > 0)) {
-        Messages[receiver][i].age++; 
+      if ((i != currentProc) && (getMsgAge(receiver, i) > 0)) {
+        setMsgAge(receiver, i, getMsgAge(receiver, i) + 1); 
       }
     }
-  }
-  restoreDataSegment();
-
-  //copy buffer from other segment to stack
-  //TODO why is this not working???
-  for(i=0; i < MESSAGE_LENGTH; i++) {
-    message[i] = *(buffer + i);
   }
 
   //copy message to first null character and write null after that
   for(i=0; i < MESSAGE_LENGTH; i++) {
-    setKernelDataSegment();
-    if ((message[i] == '\0') || bufferEmpty) {
+    if ((*(buffer + i) == '\0') || bufferEmpty) {
       bufferEmpty = 1;
-      *(Messages[receiver][CurrentProcess].buffer + i) = '\0';
-printString("B");
+      putInMemory(MESSAGE_SEGMENT, addr + i, '\0');
     } else {
-printString("A");
-      *(Messages[receiver][CurrentProcess].buffer + i) = message[i];
+      putInMemory(MESSAGE_SEGMENT, addr + i, *(buffer + i));
     }
-    restoreDataSegment();
   }
 
-  printString("message: ");
-  printString(buffer);
-  printString("EOM\n");
-  printString("message: ");
-  printString(message);
-  printString("EOM\n");
-  setKernelDataSegment();
-  printString("Message: ");
-  printString(Messages[receiver][CurrentProcess].buffer);
-  printString("EOM\n");
-  Messages[receiver][CurrentProcess].age = 1; //message is ready
-  restoreDataSegment();
+  setMsgAge(receiver, currentProc, 1); //message is ready
 }
 
 void getMessage(char* buffer) {
-  int fromProc, maxAge = 0, i = 0;
+  int fromProc, maxAge = 0, i = 0, currentProc, addr;
+  setKernelDataSegment();
+  currentProc = CurrentProcess;
+  restoreDataSegment();
+
   //get oldest message
   while(maxAge == 0) {
     for (i = 0; i < MAX_PROCESSES; i++) {
-      setKernelDataSegment();
-      if (Messages[CurrentProcess][i].age > maxAge) {
-        maxAge = Messages[CurrentProcess][i].age;
+      if (getMsgAge(currentProc, i) > maxAge) {
+        maxAge = getMsgAge(currentProc, i);
         fromProc = i;
       }
-      restoreDataSegment();
     }
   }
+  addr = getMsgAddress(currentProc, fromProc);
   
   //copy message
-  setKernelDataSegment();
   for (i = 0; i < MESSAGE_LENGTH; i++) {
-    *(buffer + i) = *(Messages[CurrentProcess][fromProc].buffer + i);
+    *(buffer + i) = readFromMemory(MESSAGE_SEGMENT, addr + i);
   }
 
-  //remove message
-  Messages[CurrentProcess][fromProc].age = 0;
-  restoreDataSegment();
+  //"remove" message
+  setMsgAge(currentProc, fromProc, 0);
 }
 
 //scheduler
