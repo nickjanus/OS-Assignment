@@ -107,22 +107,23 @@ void setMsgAge(int receiver, int sender, int age) {
 
 //race conditions below?
 void sendMessage(char* buffer, int receiver) {
-  int i = 0, bufferEmpty = 0, originalAge, currentProc, addr;
+  int i = 0, bufferEmpty = 0, originalAge, addr;
 
   setKernelDataSegment();
-  currentProc = CurrentProcess;
-  restoreDataSegment();
-  addr = getMsgAddress(receiver, currentProc);
+  addr = getMsgAddress(receiver, CurrentProcess);
 
   //age other messages
-  originalAge = getMsgAge(receiver, currentProc);
-  setMsgAge(receiver, currentProc, 0); //message not ready for reading
+  originalAge = getMsgAge(receiver, CurrentProcess);
+  setMsgAge(receiver, CurrentProcess, 0); //message not ready for reading
+  restoreDataSegment();
 
   if (originalAge != 1) { //otherwise status quo
     for(i=0; i < MAX_PROCESSES; i++) {
-      if ((i != currentProc) && (getMsgAge(receiver, i) > 0)) {
+      setKernelDataSegment();
+      if ((i != CurrentProcess) && (getMsgAge(receiver, i) > 0)) {
         setMsgAge(receiver, i, getMsgAge(receiver, i) + 1); 
       }
+      restoreDataSegment();
     }
   }
 
@@ -136,7 +137,9 @@ void sendMessage(char* buffer, int receiver) {
     }
   }
 
-  setMsgAge(receiver, currentProc, 1); //message is ready
+  setKernelDataSegment();
+  setMsgAge(receiver, CurrentProcess, 1); //message is ready
+  restoreDataSegment();
 }
 
 void getMessage(char* buffer) {
