@@ -7,9 +7,9 @@ void main()
 
   enableInterrupts();
 
-  //interrupt(0x21, 0, "\nSending message...\n", 0, 0);
-  //spam all the processes
-  for (i = 0; i < 3; i++) {
-    interrupt(0x21, 11, (int)"hello world", i, 0);
+  for (i = 1; i < 3; i++) {
+    interrupt(0x21, 20, (int)"hello world", i, 0);
   }
+
+  interrupt(0x21, 5, 0, 0, 0);
 }

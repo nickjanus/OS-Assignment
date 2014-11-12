@@ -4,7 +4,7 @@
 #define ENTRY_SIZE 32
 #define NAME_SIZE 6
 #define MAX_FILE_SIZE 13312 
-#define MAX_PROCESSES 8
+#define MAX_PROCESSES 7
 #define SEGMENT_SIZE 0x1000
 #define KERNEL_SEGMENT 0x1000
 #define MESSAGE_SEGMENT 0x2000
@@ -15,13 +15,9 @@
 #define MSG_AGE_INDEX MESSAGE_LENGTH
 typedef struct procEntry {
   int active;
+  int waiting;
   int stackPointer;
 } procEntry;
-
-typedef struct message {
-  char buffer[100];
-  int age; //minimum age for message is 1, 0 for no message
-} message;
 
 int interrupt(int number, int ax, int bx, int cx, int dx);
 void putInMemory(int segment, int offset, char c);
@@ -66,7 +62,6 @@ void main() {main2();}
 
 //globals
 procEntry ProcessTable[MAX_PROCESSES];
-message Messages[MAX_PROCESSES][MAX_PROCESSES];  //Messages[ToProcess][FromProcess]
 int CurrentProcess;
 
 void main2()
@@ -75,6 +70,7 @@ void main2()
   int i;
   for(i = 0; i < MAX_PROCESSES; i++) {
     ProcessTable[i].active = 0;
+    ProcessTable[i].waiting = 0;
     ProcessTable[i].stackPointer = INIT_STACK_POINTER;
   }
   CurrentProcess = -1; 
@@ -105,7 +101,6 @@ void setMsgAge(int receiver, int sender, int age) {
   putInMemory(MESSAGE_SEGMENT, addr + MSG_AGE_INDEX, age);
 }
 
-//race conditions below?
 void sendMessage(char* buffer, int receiver) {
   int i = 0, bufferEmpty = 0, originalAge, addr;
 
@@ -139,6 +134,10 @@ void sendMessage(char* buffer, int receiver) {
 
   setKernelDataSegment();
   setMsgAge(receiver, CurrentProcess, 1); //message is ready
+  if (ProcessTable[receiver].waiting) {
+    ProcessTable[receiver].active = 1;
+    ProcessTable[receiver].waiting = 0;
+  }
   restoreDataSegment();
 }
 
@@ -155,6 +154,14 @@ void getMessage(char* buffer) {
         maxAge = getMsgAge(currentProc, i);
         fromProc = i;
       }
+    }
+
+    //set proc to waiting if no msg
+    if (maxAge == 0) {
+      setKernelDataSegment();
+      ProcessTable[CurrentProcess].waiting = 1;
+      ProcessTable[CurrentProcess].active  = 0;
+      restoreDataSegment();
     }
   }
   addr = getMsgAddress(currentProc, fromProc);
@@ -177,7 +184,9 @@ void handleTimerInterrupt(int segment, int sp) {
     index = mod(x + CurrentProcess, MAX_PROCESSES);
     if(ProcessTable[index].active) {
       segment = index * SEGMENT_SIZE + USER_SPACE_OFFSET;
-      if(CurrentProcess != -1) {ProcessTable[CurrentProcess].stackPointer = sp;}
+      if ((CurrentProcess != -1) && (ProcessTable[CurrentProcess].active)) {
+        ProcessTable[CurrentProcess].stackPointer = sp;
+      }
       sp = ProcessTable[index].stackPointer;
       CurrentProcess = index;
       break;
@@ -223,10 +232,10 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
     case 10:
       killProcess(bx);
       break;
-    case 11:
+    case 20:
       sendMessage((char *)bx, cx);
       break;
-    case 12:
+    case 21:
       getMessage((char *)bx);
       break;
     default :
@@ -239,12 +248,18 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
 void killProcess(int proc) {
   setKernelDataSegment();
   ProcessTable[proc].active = 0;
+  ProcessTable[proc].waiting = 0;
   ProcessTable[proc].stackPointer = INIT_STACK_POINTER;
   restoreDataSegment();
 }
 
 void terminate() {
-  killProcess(CurrentProcess);
+  int proc;
+  setKernelDataSegment();
+  proc = CurrentProcess;
+  restoreDataSegment();
+
+  killProcess(proc);
   while (1);
 }
 
@@ -256,7 +271,12 @@ void executeProgram(char* name) {
 
   procEntry = getFreeProcEntry();
   segment = procEntry * SEGMENT_SIZE + USER_SPACE_OFFSET;
-//  if (segment == 0) {printString("Error: Max number of processes reached.\n"); return;}
+  if (procEntry == -1) {
+    setKernelDataSegment();
+    printString("Error: Max number of processes reached.\n"); 
+    restoreDataSegment();
+    return;
+  }
 
   readFile(name, program);
 
@@ -272,16 +292,18 @@ void executeProgram(char* name) {
 }
 
 int getFreeProcEntry() {
-  int x, freeProcEntry = -2;
+  int x, freeProcEntry = -1;
   setKernelDataSegment();
 
   for (x = 0; x < MAX_PROCESSES; x++) {
-    if (ProcessTable[x].active == 0) {
+    if ((ProcessTable[x].active == 0) && (ProcessTable[x].waiting == 0)) {
       freeProcEntry = x; 
       break;
     }
   }
 
+  setKernelDataSegment();
+  restoreDataSegment();
   restoreDataSegment();
   return freeProcEntry;
 }

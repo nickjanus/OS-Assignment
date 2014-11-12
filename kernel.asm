@@ -39,8 +39,7 @@ _readFromMemory:
 	mov ax,[bp+4]
 	mov si,[bp+6]
         mov ds,ax
-        mov al,[si]
-        mov ah,#0
+        mov ax,[si]
         pop ds
         pop bp
         ret
