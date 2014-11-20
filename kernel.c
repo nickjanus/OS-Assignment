@@ -1,9 +1,14 @@
-#define DIR_SECTOR 2 
+#define ROOT_DIR_SECTOR 2 
 #define MAP_SECTOR 1
 #define SECTOR_SIZE 512
-#define ENTRY_SIZE 32
 #define NAME_SIZE 6
-#define MAX_FILE_SIZE 13312 
+#define HEADER_SIZE 7 //Number of name and type bytes in directory
+#define TYPE_INDEX HEADER_SIZE
+#define ENTRY_SIZE 32
+#define DIR_ENTRY 1 //denotes type of entry in directory header
+#define FILE_ENTRY 2 //ditto
+#define MAX_FILE_SIZE 12800
+#define SECTOR_USED 0xFF
 #define MAX_PROCESSES 7
 #define SEGMENT_SIZE 0x1000
 #define KERNEL_SEGMENT 0x1000
@@ -31,13 +36,18 @@ void printInt(int n);
 void readString(char buffer[]); 
 void printNewLine();
 void handleInterrupt21(int ax, int bx, int cx, int dx);
-void directory();
+void directory(char* dirName);
 void readFile (char* filename, char outbuf[]);
 void writeFile (char* filename, char inbuf[]);
 void deleteFile(char* filename);
-int getDirIndex(char* filename);
-void loadDirectory();
-void loadMap();
+int getDirIndex(char* filename, char* directory);
+int getDirSector(char* name);
+void loadDirectory(char* buffer, char* name);
+void loadRootDirectory(char* buffer);
+void loadMap(char* buffer);
+void saveDirectory(char* buffer, char* name);
+void saveRootDirectory(char* buffer);
+void saveMap(char* buffer);
 void makeInterrupt21();
 int getEmptyDirIndex(char* directory);
 int getEmptySector(char* map);
@@ -56,6 +66,10 @@ void sendMessage(char* buffer, int receiver);
 void getMessage(char* buffer);
 int getMsgAddress(int receiver, int sender);
 int getMsgAge(int receiver, int sender);
+int makeDir(char* name);
+int getDir(char* name);
+void parseFileName(char* name, char* top, char* sub);
+int initEntry(char* filename, char* directory, int entryType);
 void main2();
 
 void main() {main2();}
@@ -80,8 +94,63 @@ void main2()
   makeTimerInterrupt(); //create timer interrupt for scheduling
 
   //launch shell
+printString("Execution started");
   executeProgram("shell\0");
   while(1);//make sure the stack pointer for main execution stays here
+}
+
+//returns sector number of directory after creation
+int makeDir(char* name) {
+  char map[SECTOR_SIZE], directory[SECTOR_SIZE];
+  int dirIndex, freeSector = 0;
+  loadRootDirectory(directory);
+  loadMap(map);
+
+  dirIndex = initEntry(name, directory, DIR_ENTRY);
+  freeSector = getEmptySector(map);
+  *(directory + dirIndex) = freeSector;
+  *(map + freeSector) = SECTOR_USED;
+  saveRootDirectory(directory);
+  saveMap(map);
+  return freeSector;
+}
+
+int getDirSector(char* name) {
+  int index, sector = ROOT_DIR_SECTOR;
+  char rootDirectory[SECTOR_SIZE];
+  loadRootDirectory(rootDirectory);
+  index = getDirIndex(name, rootDirectory);
+  sector = *(rootDirectory + index + TYPE_INDEX);
+  return sector;
+}
+
+//top and sub should be as long as NAME_LENGTH
+//name should be in the form: /top/sub, top/sub, /file or file
+void parseFileName(char* name, char* top, char* sub) {
+  int i = 0, x = 0;
+  char *id, *temp;
+printString("Started parsing\n");
+  *top = '/';
+printString("Started parsing\n");
+  id = sub;
+
+printString("Started parsing\n");
+  if (*name == '/') {i++;}
+  while((*(name + i) != '\0') || (*(name + i) != 0xA)) {
+    if (*(name + i) == '/') {
+printString("Slash found\n");
+      temp = top;
+      top = sub;
+      id = temp; 
+      x = 0;
+    } else {
+printString("Copy\n");
+      *(id + x) = *(name + i);
+      x++; 
+    }
+    i++;
+  }
+printString("Done parsing\n");
 }
 
 int getMsgAddress(int receiver, int sender) {
@@ -209,7 +278,7 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
       readSector((char *)bx,cx);
       break;
     case 3 :
-      directory();
+      directory((char *)bx);
       break;
     case 4 : 
       deleteFile((char *)bx);
@@ -267,6 +336,7 @@ void executeProgram(char* name) {
   int x, y, programSize, procEntry, segment;
   char program[MAX_FILE_SIZE];
 
+printString("Getting file size. ");
   programSize = getFileSize(name);
 
   procEntry = getFreeProcEntry();
@@ -278,6 +348,7 @@ void executeProgram(char* name) {
     return;
   }
 
+printString("Reading file... ");
   readFile(name, program);
 
   for (x = 0; x < programSize; x += SECTOR_SIZE) {
@@ -301,9 +372,6 @@ int getFreeProcEntry() {
       break;
     }
   }
-
-  setKernelDataSegment();
-  restoreDataSegment();
   restoreDataSegment();
   return freeProcEntry;
 }
@@ -312,9 +380,14 @@ int getFileSize(char* name) {
   int x, index, size = 0;
   char* entry;
   char directory[SECTOR_SIZE];
+  char dirName[NAME_SIZE], fileName[NAME_SIZE];
 
-  loadDirectory(directory);
-  index = getDirIndex(name);
+printString("\nParsing...\n");
+  parseFileName(name, dirName, fileName);
+printString("Loading dir\n");
+  loadDirectory(directory, dirName);
+printString("Getting dir index\n");
+  index = getDirIndex(fileName, directory);
 
   for (x = 6; x < ENTRY_SIZE; x++) {
     if (*(directory + index + x) != 0) {
@@ -322,30 +395,45 @@ int getFileSize(char* name) {
     }
   }
 
+printString("return value: "); printInt(size * SECTOR_SIZE);
   return size * SECTOR_SIZE;
 }
 
-void loadDirectory(char* buffer) {
-  readSector(buffer,DIR_SECTOR);
+void loadRootDirectory(char* buffer) {readSector(buffer, ROOT_DIR_SECTOR);}
+void loadDirectory(char* buffer, char* name) {
+  int sector;
+  if (*name == '/') {
+    loadRootDirectory(buffer);
+  } else {
+    sector = getDirSector(name);
+    readSector(buffer, sector);
+  }
 }
 
 void loadMap(char* buffer) {
   readSector(buffer,MAP_SECTOR);
 }
 
-void saveDirectory(char* buffer) {
-  writeSector(buffer,DIR_SECTOR);
+void saveRootDirectory(char* buffer) {writeSector(buffer, ROOT_DIR_SECTOR);}
+void saveDirectory(char* buffer, char* name) {
+  int sector;
+  if (*name == '/') {
+    saveRootDirectory(buffer);
+  } else {
+    sector = getDirSector(name);
+    writeSector(buffer, sector);
+  }
 }
 
 void saveMap(char* buffer) {
   writeSector(buffer,MAP_SECTOR);
 }
 
-void directory() {
+void directory(char* dirName) {
   int x, y;
   char directory[SECTOR_SIZE];
 
-  loadDirectory(directory);
+  loadDirectory(directory, dirName);
 
   for (x = 0; x < SECTOR_SIZE; x += ENTRY_SIZE) {
     if (directory[x] != 0) {
@@ -362,46 +450,64 @@ void printNewLine() {
   printChar(0xd); //start at beginning of line
 }
 
-void writeFile (char* filename, char inbuf[]) {
-  int x, sector, dirIndex, eolEncountered = 0;
-  char directory[SECTOR_SIZE];
-  char map[SECTOR_SIZE];
-
-  loadDirectory(directory);
-  loadMap(map);
+//returns directory index for writing data
+int initEntry(char* filename, char* directory, int entryType) {
+  int x, eolEncountered = 0, dirIndex;
   dirIndex = getEmptyDirIndex(directory);
-//  if (dirIndex == -1) {printString("ERROR: Directory is full\n"); return;}
+  if(dirIndex == -1) {return dirIndex;}
 
   //write name into directory
   for (x = 0; x < NAME_SIZE; x++) {
     if ((eolEncountered) || (*(filename+x) == 0xA)) {
       eolEncountered = 1;
-      directory[dirIndex + x] = 0;
+      *(directory + dirIndex + x) = 0;
     } else {
-      directory[dirIndex + x] = *(filename + x);
+      *(directory + dirIndex + x) = *(filename + x);
     }
   }
+  *(directory + dirIndex + TYPE_INDEX) = entryType;
 
-  dirIndex += NAME_SIZE;
+  return (dirIndex + HEADER_SIZE);
+}
+
+void writeFile(char* filename, char inbuf[]) {
+  int x, sector, dirIndex, eolEncountered = 0;
+  char directory[SECTOR_SIZE], map[SECTOR_SIZE];
+  char topName[NAME_SIZE], subName[NAME_SIZE];
+
+  parseFileName(filename, topName, subName);
+  loadDirectory(directory, topName);
+  filename = subName;
+  loadMap(map);
+  dirIndex = initEntry(filename, directory, FILE_ENTRY);
+  if (dirIndex == -1) {
+    setKernelDataSegment();
+    printString("ERROR: Directory is full\n"); 
+    restoreDataSegment();
+    return;
+  }
+
   //write file to sectors and record in map/directory
   //size of the file is unknown, so write up to max
   //break if a sector starts as null...
   for (x = 0; x < MAX_FILE_SIZE; x += SECTOR_SIZE) {
     sector = getEmptySector(map);
-//    if (sector == -1) {printString("ERROR: Out of disk space\n"); return;}
+    if (sector == -1) {
+      setKernelDataSegment();
+      printString("ERROR: Out of disk space\n"); 
+      restoreDataSegment();
+      return;
+    }
     
     directory[dirIndex] = sector;
     dirIndex++;
-    map[sector] = 0xFF;
+    map[sector] = SECTOR_USED;
 
-    if (*(inbuf + x) != 0) { 
-      writeSector(inbuf + x, sector);
-    } else {
-      break;
-    }
+    if (*(inbuf + x) != 0) {writeSector(inbuf + x, sector);} 
+    else { break;}
   }
 
-  saveDirectory(directory);
+  saveDirectory(directory, topName);
   saveMap(map);
 }
 
@@ -438,25 +544,24 @@ void readFile (char* filename, char outbuf[]) {
   int x, index;
   char entryChar;
   char directory[SECTOR_SIZE];
+  char topName[NAME_SIZE], subName[NAME_SIZE];
 
-  loadDirectory(directory);
-  index = getDirIndex(filename);
+  parseFileName(filename, topName, subName);
+  loadDirectory(directory, topName);
+  index = getDirIndex(subName, directory);
 //  if (index == -1) {printString("ERROR: No such file in Directory\n"); return;}
 
-  for(x = NAME_SIZE; x < ENTRY_SIZE; x++) {
+  for(x = HEADER_SIZE; x < ENTRY_SIZE; x++) {
     entryChar = directory[index + x];
     if (entryChar != 0) {
-      readSector((outbuf + (x - NAME_SIZE) * SECTOR_SIZE), (int)entryChar);
+      readSector((outbuf + (x - HEADER_SIZE) * SECTOR_SIZE), (int)entryChar);
     }
   }
 }
 
-int getDirIndex(char* filename) {
+int getDirIndex(char* filename, char* directory) {
   int x, y, index, matches;
   char fileChar, entryChar;
-  char directory[SECTOR_SIZE];
-
-  loadDirectory(directory);
 
   for (x = 0; x < SECTOR_SIZE; x += ENTRY_SIZE) {
     matches = 1;
@@ -464,7 +569,7 @@ int getDirIndex(char* filename) {
 
     for (y = 0; y < NAME_SIZE; y++) {
       fileChar = *(filename + y);
-      entryChar = directory[x + y];
+      entryChar = *(directory + x + y);
 
       if ((fileChar == 0xA) && (entryChar == 0)) {
         break;
@@ -489,18 +594,20 @@ void deleteFile(char* filename) {
   char map[SECTOR_SIZE];
   char directory[SECTOR_SIZE];
   static char zeroSector[SECTOR_SIZE];
+  char topName[NAME_SIZE], subName[NAME_SIZE];
 
-  loadDirectory(directory);
+  parseFileName(filename, topName, subName);
+  loadDirectory(directory, topName);
   loadMap(map);
-  index = getDirIndex(filename);
+  index = getDirIndex(subName, directory);
 //  if (index == -1) {printString("ERROR: No such file in Directory\n"); return;}
 
   if (index != -1) {
-    for (y = 0; y < NAME_SIZE; y++) {
+    for (y = 0; y < HEADER_SIZE; y++) {
       directory[index+y] = 0;
     }
 
-    for (y = NAME_SIZE; y < ENTRY_SIZE; y++) {
+    for (y = HEADER_SIZE; y < ENTRY_SIZE; y++) {
       entryChar = directory[index + y];
       if ((entryChar != 0)) {
         map[(int)entryChar] = 0;
@@ -510,7 +617,7 @@ void deleteFile(char* filename) {
       directory[index+y] = 0;
     }
     saveMap(map);
-    saveDirectory(directory);
+    saveDirectory(directory, topName);
   }
 }
 
