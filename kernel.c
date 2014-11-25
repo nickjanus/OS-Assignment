@@ -84,6 +84,35 @@ void main2()
   while(1);//make sure the stack pointer for main execution stays here
 }
 
+//top and sub should be as long as NAME_LENGTH
+//name should be in the form: /top/sub, top/sub, /file or file
+void parseFileName(char* name, char* top, char* sub) {
+  int i = 0, x = 0;
+  char *id, *temp;
+printString("Started parsing\n");
+  *top = '/';
+printString("Started parsing\n");
+  id = sub;
+
+printString("Started parsing\n");
+  if (*name == '/') {i++;}
+  while((*(name + i) != '\0') || (*(name + i) != 0xA)) {
+    if (*(name + i) == '/') {
+printString("Slash found\n");
+      temp = top;
+      top = sub;
+      id = temp; 
+      x = 0;
+    } else {
+printString("Copy\n");
+      *(id + x) = *(name + i);
+      x++; 
+    }
+    i++;
+  }
+printString("Done parsing\n");
+}
+
 int getMsgAddress(int receiver, int sender) {
   int addr = 0;
   addr = receiver * MAX_PROCESSES * (MESSAGE_LENGTH + 1); //+1 to track age
