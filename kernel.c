@@ -56,6 +56,7 @@ void sendMessage(char* buffer, int receiver);
 void getMessage(char* buffer);
 int getMsgAddress(int receiver, int sender);
 int getMsgAge(int receiver, int sender);
+void parseFileName(char* name, char* top, char* sub);
 void main2();
 
 void main() {main2();}
@@ -68,6 +69,7 @@ void main2()
 {
   //setup proc table
   int i;
+  char top[NAME_SIZE + 1], sub[NAME_SIZE + 1];
   for(i = 0; i < MAX_PROCESSES; i++) {
     ProcessTable[i].active = 0;
     ProcessTable[i].waiting = 0;
@@ -75,6 +77,10 @@ void main2()
   }
   CurrentProcess = -1; 
 
+  printString("calling function...\n");
+  parseFileName("/BEEBOO/YAHOOO", &top, &sub);
+  printString(top);
+  printString(sub);
   //set up interrupts
   makeInterrupt21();  //create system call interrupt 
   makeTimerInterrupt(); //create timer interrupt for scheduling
@@ -86,31 +92,30 @@ void main2()
 
 //top and sub should be as long as NAME_LENGTH
 //name should be in the form: /top/sub, top/sub, /file or file
-void parseFileName(char* name, char* top, char* sub) {
+void parseFileName(char* name, char** top, char** sub) {
   int i = 0, x = 0;
   char *id, *temp;
-printString("Started parsing\n");
-  *top = '/';
-printString("Started parsing\n");
-  id = sub;
+  **top = '/';
+  id = *sub;
 
 printString("Started parsing\n");
   if (*name == '/') {i++;}
-  while((*(name + i) != '\0') || (*(name + i) != 0xA)) {
+  while((*(name + i) != '\0') && (*(name + i) != 0xA)) {
     if (*(name + i) == '/') {
-printString("Slash found\n");
-      temp = top;
-      top = sub;
-      id = temp; 
+printString("Flippity floppity, bitches!");
+      temp = *top;
+      *top = *sub;
+      *sub = temp;
+      id = temp;
       x = 0;
     } else {
-printString("Copy\n");
       *(id + x) = *(name + i);
       x++; 
     }
+printString("x");
     i++;
   }
-printString("Done parsing\n");
+printString("Finished parsing\n");
 }
 
 int getMsgAddress(int receiver, int sender) {
