@@ -69,6 +69,9 @@ int getMsgAge(int receiver, int sender);
 int makeDir(char* name);
 int getDir(char* name);
 void parseFileName(char* name, char* top, char* sub);
+void copyString(char* from, char* to, int length);
+void clearString(char* str, int length);
+void moveString(char* from, char* to, int length);
 int initEntry(char* filename, char* directory, int entryType);
 void main2();
 
@@ -128,29 +131,40 @@ int getDirSector(char* name) {
 //name should be in the form: /top/sub, top/sub, /file or file
 void parseFileName(char* name, char* top, char* sub) {
   int i = 0, x = 0;
-  char *id, *temp;
-printString("Started parsing\n");
+  char *id;
   *top = '/';
-printString("Started parsing\n");
   id = sub;
 
-printString("Started parsing\n");
   if (*name == '/') {i++;}
-  while((*(name + i) != '\0') || (*(name + i) != 0xA)) {
+  while((*(name + i) != '\0') && (*(name + i) != 0xA)) {
     if (*(name + i) == '/') {
-printString("Slash found\n");
-      temp = top;
-      top = sub;
-      id = temp; 
+      moveString(id, top, NAME_SIZE);
       x = 0;
     } else {
-printString("Copy\n");
       *(id + x) = *(name + i);
       x++; 
     }
     i++;
   }
-printString("Done parsing\n");
+}
+
+void copyString(char* from, char* to, int length) {
+  int i;
+  for(i = 0; i < length; i++) {
+    *(to + i) = *(from + i);
+  }
+}
+
+void clearString(char* str, int length) {
+  int i;
+  for(i = 0; i < length; i++) {
+    *(str + i) = 0;
+  }
+}
+
+void moveString(char* from, char* to, int length) {
+  copyString(from, to, length);
+  clearString(from, length);
 }
 
 int getMsgAddress(int receiver, int sender) {
