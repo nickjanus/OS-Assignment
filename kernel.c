@@ -57,6 +57,9 @@ void getMessage(char* buffer);
 int getMsgAddress(int receiver, int sender);
 int getMsgAge(int receiver, int sender);
 void parseFileName(char* name, char* top, char* sub);
+void copyString(char* from, char* to, int length);
+void clearString(char* str, int length);
+void moveString(char* from, char* to, int length);
 void main2();
 
 void main() {main2();}
@@ -69,7 +72,6 @@ void main2()
 {
   //setup proc table
   int i;
-  char top[NAME_SIZE + 1], sub[NAME_SIZE + 1];
   for(i = 0; i < MAX_PROCESSES; i++) {
     ProcessTable[i].active = 0;
     ProcessTable[i].waiting = 0;
@@ -77,10 +79,6 @@ void main2()
   }
   CurrentProcess = -1; 
 
-  printString("calling function...\n");
-  parseFileName("/BEEBOO/YAHOOO", &top, &sub);
-  printString(top);
-  printString(sub);
   //set up interrupts
   makeInterrupt21();  //create system call interrupt 
   makeTimerInterrupt(); //create timer interrupt for scheduling
@@ -92,30 +90,42 @@ void main2()
 
 //top and sub should be as long as NAME_LENGTH
 //name should be in the form: /top/sub, top/sub, /file or file
-void parseFileName(char* name, char** top, char** sub) {
+void parseFileName(char* name, char* top, char* sub) {
   int i = 0, x = 0;
-  char *id, *temp;
-  **top = '/';
-  id = *sub;
+  char *id;
+  *top = '/';
+  id = sub;
 
-printString("Started parsing\n");
   if (*name == '/') {i++;}
   while((*(name + i) != '\0') && (*(name + i) != 0xA)) {
     if (*(name + i) == '/') {
-printString("Flippity floppity, bitches!");
-      temp = *top;
-      *top = *sub;
-      *sub = temp;
-      id = temp;
+      moveString(id, top, NAME_SIZE);
       x = 0;
     } else {
       *(id + x) = *(name + i);
       x++; 
     }
-printString("x");
     i++;
   }
-printString("Finished parsing\n");
+}
+
+void copyString(char* from, char* to, int length) {
+  int i;
+  for(i = 0; i < length; i++) {
+    *(to + i) = *(from + i);
+  }
+}
+
+void clearString(char* str, int length) {
+  int i;
+  for(i = 0; i < length; i++) {
+    *(str + i) = 0;
+  }
+}
+
+void moveString(char* from, char* to, int length) {
+  copyString(from, to, length);
+  clearString(from, length);
 }
 
 int getMsgAddress(int receiver, int sender) {
