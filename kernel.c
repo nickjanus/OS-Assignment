@@ -316,6 +316,9 @@ void handleInterrupt21(int ax, int bx, int cx, int dx)
     case 10:
       killProcess(bx);
       break;
+    case 11:
+      makeDir((char *)bx);
+      break;
     case 20:
       sendMessage((char *)bx, cx);
       break;
@@ -557,7 +560,12 @@ void readFile (char* filename, char outbuf[]) {
   parseFileName(filename, topName, subName);
   loadDirectory(directory, topName);
   index = getDirIndex(subName, directory);
-//  if (index == -1) {printString("ERROR: No such file in Directory\n"); return;}
+  if (index == -1) {
+    setKernelDataSegment();
+    printString("ERROR: No such file in Directory\n"); 
+    restoreDataSegment();
+    return;
+  }
 
   for(x = HEADER_SIZE; x < ENTRY_SIZE; x++) {
     entryChar = directory[index + x];
