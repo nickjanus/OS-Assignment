@@ -3,7 +3,7 @@
 #define SECTOR_SIZE 512
 #define NAME_SIZE 6
 #define HEADER_SIZE 7 //Number of name and type bytes in directory
-#define TYPE_INDEX HEADER_SIZE
+#define TYPE_INDEX HEADER_SIZE - 1
 #define ENTRY_SIZE 32
 #define DIR_ENTRY 1 //denotes type of entry in directory header
 #define FILE_ENTRY 2 //ditto
@@ -97,7 +97,6 @@ void main2()
   makeTimerInterrupt(); //create timer interrupt for scheduling
 
   //launch shell
-printString("Execution started");
   executeProgram("shell\0");
   while(1);//make sure the stack pointer for main execution stays here
 }
@@ -123,14 +122,14 @@ int getDirSector(char* name) {
   char rootDirectory[SECTOR_SIZE];
   loadRootDirectory(rootDirectory);
   index = getDirIndex(name, rootDirectory);
-  sector = *(rootDirectory + index + TYPE_INDEX);
+  sector = *(rootDirectory + index + HEADER_SIZE);
   return sector;
 }
 
 //top and sub should be as long as NAME_LENGTH
 //name should be in the form: /top/sub, top/sub, /file or file
 void parseFileName(char* name, char* top, char* sub) {
-  int i = 0, x = 0;
+  int i = 0, x = 0, z;
   char *id;
   *top = '/';
   id = sub;
@@ -139,6 +138,7 @@ void parseFileName(char* name, char* top, char* sub) {
   while((*(name + i) != '\0') && (*(name + i) != 0xA)) {
     if (*(name + i) == '/') {
       moveString(id, top, NAME_SIZE);
+      for(z = x; z < NAME_SIZE && z > 0; z++) {*(top + z) = 0;}
       x = 0;
     } else {
       *(id + x) = *(name + i);
@@ -146,6 +146,7 @@ void parseFileName(char* name, char* top, char* sub) {
     }
     i++;
   }
+  for(z = x; z < NAME_SIZE; z++) {*(sub + z) = 0;}
 }
 
 void copyString(char* from, char* to, int length) {
@@ -350,7 +351,6 @@ void executeProgram(char* name) {
   int x, y, programSize, procEntry, segment;
   char program[MAX_FILE_SIZE];
 
-printString("Getting file size. ");
   programSize = getFileSize(name);
 
   procEntry = getFreeProcEntry();
@@ -362,7 +362,6 @@ printString("Getting file size. ");
     return;
   }
 
-printString("Reading file... ");
   readFile(name, program);
 
   for (x = 0; x < programSize; x += SECTOR_SIZE) {
@@ -396,20 +395,15 @@ int getFileSize(char* name) {
   char directory[SECTOR_SIZE];
   char dirName[NAME_SIZE], fileName[NAME_SIZE];
 
-printString("\nParsing...\n");
   parseFileName(name, dirName, fileName);
-printString("Loading dir\n");
   loadDirectory(directory, dirName);
-printString("Getting dir index\n");
   index = getDirIndex(fileName, directory);
-
-  for (x = 6; x < ENTRY_SIZE; x++) {
+  for (x = HEADER_SIZE; x < ENTRY_SIZE; x++) {
     if (*(directory + index + x) != 0) {
       size++;
     }
   }
 
-printString("return value: "); printInt(size * SECTOR_SIZE);
   return size * SECTOR_SIZE;
 }
 
