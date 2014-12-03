@@ -5,7 +5,7 @@
 
 	bits 16
 KSEG	equ	0x1000		;kernel goes into memory at 0x10000
-KSIZE	equ	10		;kernel is at most 10 sectors (and probably less)
+KSIZE	equ	13		;kernel is at most 10 sectors (and probably less)
 KSTART	equ	3		;kernel lives at sector 3 (makes room for map & dir)
 
 	;boot loader starts at 0 in segment 0x7c00
